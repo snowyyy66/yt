@@ -10,7 +10,7 @@ def test_homepage_contains_parody_brand_and_video_feed():
 
     assert response.status_code == 200
     assert "Видосфера" in response.text
-    assert "Свежее из бесконечной ленты" in response.text
+    assert "Рекомендации" in response.text
 
 
 def test_video_api_lists_demo_videos():

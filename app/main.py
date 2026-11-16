@@ -1,4 +1,5 @@
 from uuid import uuid4
+from datetime import timedelta
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -199,6 +200,109 @@ class ReportInput(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
+class DirectUploadInput(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=5000)
+    content_type: str
+    size: int = Field(gt=0)
+    visibility: str = "public"
+    grant_email: EmailStr | None = None
+
+
+MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024
+
+
+def valid_video_signature(signature: bytes) -> bool:
+    return signature.startswith(b"\x1a\x45\xdf\xa3") or (
+        signature.startswith(b"RIFF") and signature[8:12] == b"AVI "
+    ) or signature[4:8] == b"ftyp"
+
+
+@app.post("/api/videos/upload-url", status_code=201, tags=["videos"])
+def create_video_upload(data: DirectUploadInput, user: User = Depends(current_user), session: Session = Depends(db_session)):
+    if data.visibility not in {"public", "private"}:
+        raise HTTPException(status_code=422, detail="Выбери открытый или приватный доступ")
+    if not data.content_type.startswith("video/"):
+        raise HTTPException(status_code=415, detail="Нужен файл видеоформата")
+    if data.size > MAX_VIDEO_SIZE:
+        raise HTTPException(status_code=413, detail="Размер видео не должен превышать 2 ГБ")
+    from app import storage
+
+    video_id = uuid4().hex
+    key = f"original/{video_id}"
+    try:
+        storage.ensure_bucket()
+        upload_url = storage.client(public=True).presigned_put_object(
+            storage.bucket_name(), key, expires=timedelta(minutes=15)
+        )
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Хранилище видео временно недоступно") from error
+    video = VideoRecord(
+        id=video_id, owner_id=user.id, title=data.title.strip(), description=data.description,
+        object_key=key, visibility=data.visibility, status="uploading",
+    )
+    session.add(video)
+    session.commit()
+    return {"id": video_id, "upload_url": upload_url, "content_type": data.content_type}
+
+
+@app.post("/api/videos/{video_id}/complete", tags=["videos"])
+def complete_video_upload(video_id: str, user: User = Depends(current_user), session: Session = Depends(db_session)):
+    video = session.get(VideoRecord, video_id)
+    if video is None or video.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Загрузка не найдена")
+    if video.status != "uploading":
+        return {"id": video.id, "status": video.status}
+    from app import storage
+
+    try:
+        store = storage.client()
+        info = store.stat_object(storage.bucket_name(), video.object_key)
+        if info.size <= 0 or info.size > MAX_VIDEO_SIZE:
+            try:
+                store.remove_object(storage.bucket_name(), video.object_key)
+            except Exception:
+                pass
+            video.status = "failed"
+            session.commit()
+            raise HTTPException(status_code=413, detail="Размер видео не должен превышать 2 ГБ")
+        response = store.get_object(storage.bucket_name(), video.object_key, offset=0, length=12)
+        try:
+            signature = response.read(12)
+        finally:
+            response.close()
+            if hasattr(response, "release_conn"):
+                response.release_conn()
+        if not valid_video_signature(signature):
+            try:
+                store.remove_object(storage.bucket_name(), video.object_key)
+            except Exception:
+                pass
+            video.status = "failed"
+            session.commit()
+            raise HTTPException(status_code=415, detail="Файл не похож на видео MP4, MOV, WebM или AVI")
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=409, detail="Файл ещё не загружен в хранилище") from error
+
+    video.status = "processing" if __import__("os").getenv("VIDEO_WORKER_ENABLED") == "true" else "ready"
+    session.commit()
+    if video.status == "processing":
+        try:
+            from app.jobs import enqueue
+            enqueue(video_id)
+        except Exception as error:
+            video.status = "failed"
+            session.commit()
+            try:
+                storage.client().remove_object(storage.bucket_name(), video.object_key)
+            except Exception:
+                pass
+            raise HTTPException(status_code=503, detail="Не удалось поставить видео в очередь обработки") from error
+    return {"id": video.id, "status": video.status}
+
+
 @app.post("/api/videos", status_code=201, tags=["videos"])
 def upload_video(file: UploadFile = File(...), title: str = Form(min_length=1, max_length=100), description: str = Form(default=""), visibility: str = Form(default="public"), user: User = Depends(current_user), session: Session = Depends(db_session)):
     if visibility not in {"public", "private"}:
@@ -207,10 +311,9 @@ def upload_video(file: UploadFile = File(...), title: str = Form(min_length=1, m
         raise HTTPException(status_code=415, detail="Нужен файл видеоформата")
     signature = file.file.read(12)
     file.file.seek(0)
-    valid_signature = signature.startswith(b"\x1a\x45\xdf\xa3") or signature.startswith(b"RIFF") and signature[8:12] == b"AVI " or signature[4:8] == b"ftyp"
-    if not valid_signature:
+    if not valid_video_signature(signature):
         raise HTTPException(status_code=415, detail="Файл не похож на видео MP4, MOV, WebM или AVI")
-    if file.size is None or file.size == 0 or file.size > 2 * 1024 * 1024 * 1024:
+    if file.size is None or file.size == 0 or file.size > MAX_VIDEO_SIZE:
         raise HTTPException(status_code=413, detail="Размер видео должен быть от 1 байта до 2 ГБ")
     from app import storage
 
@@ -254,7 +357,7 @@ def play_video(video_id: str, authorization: str | None = Header(default=None), 
     video = session.get(VideoRecord, video_id)
     if video is None or video.hidden:
         raise HTTPException(status_code=404, detail="Видео не найдено")
-    if video.status == "processing":
+    if video.status in {"uploading", "processing"}:
         raise HTTPException(status_code=409, detail="Видео ещё обрабатывается. Попробуй через минуту.")
     if video.status != "ready":
         raise HTTPException(status_code=410, detail="Видео не удалось обработать")

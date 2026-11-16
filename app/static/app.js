@@ -135,12 +135,17 @@ document.addEventListener('click',async event=>{
 document.querySelector('#upload-form').onsubmit=event=>{
   event.preventDefault();
   const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}
-  const form=event.currentTarget;const values=new FormData(form);const status=document.querySelector('#upload-status');
-  const request=new XMLHttpRequest();request.open('POST','/api/videos');request.setRequestHeader('Authorization',`Bearer ${token}`);
-  request.upload.onprogress=progress=>{if(progress.lengthComputable)document.querySelector('#upload-progress').value=Math.round(progress.loaded/progress.total*100)};
-  request.onload=async()=>{const result=JSON.parse(request.responseText||'{}');if(request.status>=300){status.textContent=result.detail||'Не удалось загрузить видео';return}const grantEmail=values.get('grant_email');if(values.get('visibility')==='private'&&grantEmail){const grant=await fetch(`/api/videos/${result.id}/access`,{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify({email:grantEmail})});if(!grant.ok){status.textContent='Видео загружено, но доступ не выдан. Проверь почту получателя.';return}}status.innerHTML=`Видео сохранено. <a href="/?v=${encodeURIComponent(result.id)}">Открыть ролик</a>`};
-  request.onerror=()=>{status.textContent='Сеть прервалась. Попробуй загрузить ещё раз.'};
-  request.send(values);
+    const form=event.currentTarget;const values=new FormData(form);const file=document.querySelector('#video-file').files[0];const status=document.querySelector('#upload-status');const progress=document.querySelector('#upload-progress');
+    if(!file){status.textContent='Сначала выбери видео';return}
+    const uploadRequest=async()=>{
+      const start=await fetch('/api/videos/upload-url',{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify({title:values.get('title'),description:values.get('description'),visibility:values.get('visibility'),grant_email:values.get('grant_email')||null,content_type:file.type||'application/octet-stream',size:file.size})});
+      const ticket=await start.json();if(!start.ok)throw new Error(ticket.detail||'Не удалось начать загрузку');
+      await new Promise((resolve,reject)=>{const request=new XMLHttpRequest();request.open('PUT',ticket.upload_url);request.setRequestHeader('Content-Type',ticket.content_type);request.upload.onprogress=event=>{if(event.lengthComputable)progress.value=Math.round(event.loaded/event.total*90)};request.onload=()=>request.status>=200&&request.status<300?resolve():reject(new Error('Хранилище отклонило файл. Проверь настройки CORS у bucket.'));request.onerror=()=>reject(new Error('Соединение с хранилищем прервалось. Можно начать загрузку снова.'));request.send(file)});
+      const finish=await fetch(`/api/videos/${ticket.id}/complete`,{method:'POST',headers:tokenHeaders()});const result=await finish.json();if(!finish.ok)throw new Error(result.detail||'Не удалось проверить загруженный файл');progress.value=100;
+      const grantEmail=values.get('grant_email');if(values.get('visibility')==='private'&&grantEmail){const grant=await fetch(`/api/videos/${ticket.id}/access`,{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify({email:grantEmail})});if(!grant.ok){status.textContent='Видео загружено, но доступ не выдан. Проверь почту получателя.';return}}
+      status.innerHTML=`Видео сохранено. <a href="/?v=${encodeURIComponent(ticket.id)}">Открыть ролик</a>`;
+    };
+    status.textContent='Подготавливаем безопасную загрузку…';progress.value=0;uploadRequest().catch(error=>{status.textContent=error.message});
 };
 const originalRender=render;
 async function renderRoute(){

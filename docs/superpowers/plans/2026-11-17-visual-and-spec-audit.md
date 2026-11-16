@@ -23,27 +23,29 @@
 
 **Files:** Modify `app/main.py`; modify `tests/test_interactions.py`.
 
-- [ ] Add a regression test showing the like endpoint returns the persisted state and active count.
-- [ ] Run it and verify the response lacks the required state/count.
-- [ ] Return `liked` and active `count` from the endpoint using a database query.
-- [ ] Run interaction tests and commit.
+- [x] Add a regression test showing the like endpoint returns the persisted state and active count.
+- [x] Run it and verify the response lacks the required state/count.
+- [x] Return `liked` and active `count` from the endpoint using a database query.
+- [x] Run interaction tests and commit.
 
 ### Task 2: Watch and comment interface
 
 **Files:** Modify `app/static/index.html`, `app/static/styles.css`, and `app/static/app.js`; add `DESIGN.md`.
 
-- [ ] Capture the current local homepage and watch dialog at desktop and mobile widths.
-- [ ] Replace the browser-default comment submit control with a semantic composer and designed button; improve the channel/action hierarchy and responsive watch dialog.
-- [ ] Ensure likes use the server response and comments refresh from the API without losing the current video state.
-- [ ] Recheck keyboard, focus, and narrow-screen behavior in a browser; commit.
+- [x] Capture the current local homepage and watch dialog at desktop and mobile widths.
+- [x] Replace the browser-default comment submit control with a semantic composer and designed button; improve the channel/action hierarchy and responsive watch dialog.
+- [x] Ensure likes use the server response and comments refresh from the API without losing the current video state.
+- [x] Recheck keyboard, focus, and narrow-screen behavior in a browser; commit.
 
 ### Task 3: Assignment compliance audit
 
-**Files:** Modify `README.md` and `docs/vercel.md` only where the verified implementation is misrepresented; add a compliance checklist to `docs/`.
+**Files:** Modify upload API/UI and regression tests to close the Vercel body-size gap; update `README.md`, architecture and Vercel docs; add a compliance checklist to `docs/`.
 
-- [ ] Trace each requested screen, role, private-media rule, object-storage path, worker, demo seed, test, Swagger path, and clean-Ubuntu command to code or documentation.
-- [ ] Run the full pytest suite and deployment/configuration checks supported by this repository.
-- [ ] Record verified coverage and any gaps that cannot be closed without external service credentials or platform support; commit.
+- [x] Trace each requested screen, role, private-media rule, object-storage path, worker, demo seed, test, Swagger path, and clean-Ubuntu command to code or documentation.
+- [x] Replace the Vercel-limited multipart path in the UI with a signed direct-to-object-store upload; verify ownership, object size, and video signature before enabling playback.
+- [x] Document R2 endpoint/CORS setup and report the remaining worker, quota, migration, and external-deploy limitations.
+- [x] Run the full pytest suite and deployment/configuration checks supported by this repository.
+- [x] Record verified coverage and any gaps that cannot be closed without external service credentials or platform support; commit.
 
 ## Review Focus
 

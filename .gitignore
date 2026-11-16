@@ -11,3 +11,5 @@ yt.db
 tests.db
 /vercel-dist/
 /.vercel/
+/.playwright-cli/
+/output/playwright/
