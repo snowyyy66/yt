@@ -42,3 +42,18 @@ document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>but
 document.querySelector('#register-toggle').onclick=()=>{const name=document.querySelector('#name-field');const isHidden=name.hidden;name.hidden=!isHidden;document.querySelector('#account-title').textContent=isHidden?'Создание аккаунта':'Вход в Видосферу';document.querySelector('#register-toggle').textContent=isHidden?'Уже есть аккаунт? Войти':'Впервые здесь? Создать аккаунт'};
 document.querySelector('#account-form').onsubmit=event=>{event.preventDefault();document.querySelector('#account-status').textContent='Форма готова. Подключение регистрации появится вместе с серверной авторизацией.'};
 document.querySelector('#upload-form').onsubmit=event=>{event.preventDefault();const file=document.querySelector('#video-file').files[0];if(!file)return;const bar=document.querySelector('#upload-progress');const status=document.querySelector('#upload-status');let value=0;const timer=setInterval(()=>{value=Math.min(100,value+8);bar.value=value;if(value===100){clearInterval(timer);status.textContent='Демо-загрузка завершена. Серверное хранилище подключается в следующем этапе.'}},120)};
+const accountForm=document.querySelector('#account-form');
+accountForm.onsubmit=async event=>{
+  event.preventDefault();
+  const values=Object.fromEntries(new FormData(accountForm));
+  const registering=!document.querySelector('#name-field').hidden;
+  const status=document.querySelector('#account-status');
+  try{
+    const response=await fetch(registering?'/api/auth/register':'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(values)});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.detail||'Не удалось войти');
+    localStorage.setItem('token',result.access_token);
+    document.querySelector('#account-dialog').close();
+    document.querySelector('#account-open').textContent=values.name?.[0]?.toUpperCase()||values.email[0].toUpperCase();
+  }catch(error){status.textContent=error.message}
+};
