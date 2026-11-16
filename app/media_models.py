@@ -44,6 +44,11 @@ class Report(Base):
     reason: Mapped[str] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class HiddenDemoVideo(Base):
+    __tablename__ = "hidden_demo_videos"
+    video_id: Mapped[str] = mapped_column(String(40), primary_key=True)
 class Playlist(Base):
     __tablename__ = "playlists"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

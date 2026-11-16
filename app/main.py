@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.media_models import Report, Subscription, VideoGrant, VideoRecord
+from app.media_models import HiddenDemoVideo, Report, Subscription, VideoGrant, VideoRecord
 from app.models import Base, Comment, Like, SessionLocal, User, engine
 from app.security import hash_password, issue_token, read_token, verify_password
 
@@ -16,6 +16,14 @@ Base.metadata.create_all(engine)
 
 app = FastAPI(title="Видосфера", description="Пародийный видеохостинг", version="0.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+def db_session():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
 VIDEOS = [
     {"id": "v1", "title": "Как я нажал «пропустить рекламу» 47 раз", "channel": "Кот Борисыч", "views": "2,4 млн просмотров", "age": "2 дня назад", "color": "coral", "duration": "12:48", "category": "Для вас"},
@@ -35,19 +43,15 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/videos/{video_id}", tags=["videos"])
-def get_video(video_id: str, authorization: str | None = Header(default=None)):
-    from app.media_models import VideoRecord
-    from app.models import SessionLocal
-
-    with SessionLocal() as session:
-        record = session.get(VideoRecord, video_id)
-        if record is not None:
-            user_id = read_token(authorization[7:]) if authorization and authorization.startswith("Bearer ") else None
-            viewer = session.get(User, user_id) if user_id else None
-            require_video_access(video_id, session, viewer)
-            return {"id": record.id, "title": record.title, "description": record.description, "channel": session.get(User, record.owner_id).name, "views": "Новое видео", "age": "только что", "color": "slate", "duration": "--:--", "category": "Новое", "uploaded": True, "ownerId": record.owner_id}
+def get_video(video_id: str, authorization: str | None = Header(default=None), session: Session = Depends(db_session)):
+    record = session.get(VideoRecord, video_id)
+    if record is not None:
+        user_id = read_token(authorization[7:]) if authorization and authorization.startswith("Bearer ") else None
+        viewer = session.get(User, user_id) if user_id else None
+        require_video_access(video_id, session, viewer)
+        return {"id": record.id, "title": record.title, "description": record.description, "channel": session.get(User, record.owner_id).name, "views": "Новое видео", "age": "только что", "color": "slate", "duration": "--:--", "category": "Новое", "uploaded": True, "ownerId": record.owner_id}
     sample = next((video for video in VIDEOS if video["id"] == video_id), None)
-    if sample is None:
+    if sample is None or session.get(HiddenDemoVideo, video_id) is not None:
         raise HTTPException(status_code=404, detail="Видео не найдено")
     return sample
 
@@ -64,14 +68,6 @@ def homepage():
     return FileResponse("app/static/index.html")
 
 
-def db_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
 def current_user(authorization: str | None = Header(default=None), session: Session = Depends(db_session)) -> User:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Войди, чтобы продолжить")
@@ -86,6 +82,8 @@ def require_video_access(video_id: str, session: Session, user: User | None = No
     video = session.get(VideoRecord, video_id)
     if video is None:
         if any(sample["id"] == video_id for sample in VIDEOS):
+            if session.get(HiddenDemoVideo, video_id) is not None:
+                raise HTTPException(status_code=404, detail="Видео не найдено")
             return None
         raise HTTPException(status_code=404, detail="Видео не найдено")
     if video.hidden:
@@ -337,8 +335,12 @@ def moderation_reports(_: User = Depends(require_moderator), session: Session = 
 def hide_video(video_id: str, user: User = Depends(require_moderator), session: Session = Depends(db_session)):
     video = session.get(VideoRecord, video_id)
     if video is None:
-        raise HTTPException(status_code=404, detail="Видео не найдено")
-    video.hidden = True
+        if not any(sample["id"] == video_id for sample in VIDEOS):
+            raise HTTPException(status_code=404, detail="Видео не найдено")
+        if session.get(HiddenDemoVideo, video_id) is None:
+            session.add(HiddenDemoVideo(video_id=video_id))
+    else:
+        video.hidden = True
     session.query(Report).filter(Report.video_id == video_id).update({"status": "reviewed"})
     session.commit()
     return {"video_id": video_id, "hidden": True, "moderated_by": user.id}
@@ -359,7 +361,8 @@ def list_videos(session: Session = Depends(db_session)) -> list[dict[str, object
                 thumbnail_url = None
         records.append({"id": row.id, "title": row.title, "channel": session.get(User, row.owner_id).name, "views": "Новое видео", "age": "только что", "color": "slate", "duration": "--:--", "category": "Новое", "uploaded": True, "owner_id": row.owner_id, "thumbnail": thumbnail_url})
     database_ids = set(session.scalars(select(VideoRecord.id)).all())
-    return records + [video for video in VIDEOS if video["id"] not in database_ids]
+    hidden_demo_ids = set(session.scalars(select(HiddenDemoVideo.video_id)).all())
+    return records + [video for video in VIDEOS if video["id"] not in database_ids and video["id"] not in hidden_demo_ids]
 
 
 class PlaylistInput(BaseModel):
@@ -420,7 +423,7 @@ def playlist_videos(playlist_id: int, authorization: str | None = Header(default
             videos.append({"id": video.id, "title": video.title})
         else:
             sample = next((video for video in VIDEOS if video["id"] == item.video_id), None)
-            if sample:
+            if sample and session.get(HiddenDemoVideo, sample["id"]) is None:
                 videos.append({"id": sample["id"], "title": sample["title"]})
     return {"id": playlist.id, "title": playlist.title, "videos": videos}
 @app.get("/api/channels/subscriptions", tags=["channels"])
