@@ -156,6 +156,25 @@ def add_comment(video_id: str, data: CommentInput, user: User = Depends(current_
     return {"id": comment.id, "text": comment.text, "author": user.name}
 
 
+@app.get("/api/videos/{video_id}/like", tags=["videos"])
+def get_like_state(video_id: str, authorization: str | None = Header(default=None), session: Session = Depends(db_session)):
+    user_id = read_token(authorization[7:]) if authorization and authorization.startswith("Bearer ") else None
+    user = session.get(User, user_id) if user_id else None
+    require_video_access(video_id, session, user)
+    liked = bool(user and session.scalar(select(Like).where(
+        Like.video_id == video_id,
+        Like.user_id == user.id,
+        Like.active.is_(True),
+    )))
+    count = session.scalar(
+        select(func.count()).select_from(Like).where(
+            Like.video_id == video_id,
+            Like.active.is_(True),
+        )
+    )
+    return {"liked": liked, "count": count or 0}
+
+
 @app.put("/api/videos/{video_id}/like", tags=["videos"])
 def toggle_like(video_id: str, user: User = Depends(current_user), session: Session = Depends(db_session)):
     require_video_access(video_id, session, user)
