@@ -334,8 +334,8 @@ def list_videos(session: Session = Depends(db_session)) -> list[dict[str, object
             except Exception:
                 thumbnail_url = None
         records.append({"id": row.id, "title": row.title, "channel": session.get(User, row.owner_id).name, "views": "Новое видео", "age": "только что", "color": "slate", "duration": "--:--", "category": "Новое", "uploaded": True, "owner_id": row.owner_id, "thumbnail": thumbnail_url})
-    hidden_ids = set(session.scalars(select(VideoRecord.id).where(VideoRecord.hidden.is_(True))).all())
-    return records + [video for video in VIDEOS if video["id"] not in hidden_ids]
+    database_ids = set(session.scalars(select(VideoRecord.id)).all())
+    return records + [video for video in VIDEOS if video["id"] not in database_ids]
 
 
 class PlaylistInput(BaseModel):

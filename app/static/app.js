@@ -109,7 +109,7 @@ async function renderRoute(){
   const params=new URLSearchParams(location.search);const page=params.get('page');const channelId=params.get('channel');const videoId=params.get('v');
   if(videoId){const response=await fetch(`/api/videos/${videoId}`,{headers:tokenHeaders()});const item=await response.json();if(response.ok){if(!videos.some(video=>video.id===item.id))videos.unshift({...item,scene:'🎬',word:'ТВОЁ ВИДЕО'});openVideo(videoId)}else{feed.innerHTML=`<p>${escapeHtml(item.detail||'Видео недоступно')}</p>`}return}
   if(!page&&!channelId){
-    try{const response=await fetch('/api/videos');if(response.ok){const uploaded=await response.json();const existing=new Set(videos.map(item=>item.id));for(const item of uploaded){if(existing.has(item.id))continue;videos.unshift({id:item.id,title:item.title,channel:item.channel,views:item.views,age:item.age,color:item.color||'slate',duration:item.duration||'--:--',category:item.category||'Новое',scene:'🎬',word:'НОВЫЙ РОЛИК',uploaded:Boolean(item.uploaded),ownerId:item.owner_id,thumbnail:item.thumbnail})}}}catch{};
+    try{const response=await fetch('/api/videos');if(response.ok){const uploaded=await response.json();for(const item of uploaded){const normalized={id:item.id,title:item.title,channel:item.channel,views:item.views,age:item.age,color:item.color||'slate',duration:item.duration||'--:--',category:item.category||'Новое',scene:'🎬',word:'НОВЫЙ РОЛИК',uploaded:Boolean(item.uploaded),ownerId:item.owner_id,thumbnail:item.thumbnail};const index=videos.findIndex(video=>video.id===item.id);if(index<0)videos.unshift(normalized);else videos[index]={...videos[index],...normalized}}}}catch{};
     originalRender();return;
   }
   chips.innerHTML='';feed.innerHTML='';

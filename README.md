@@ -16,7 +16,7 @@ bash deploy.sh
 
 ## Демо-данные
 
-После запуска выполни `docker compose exec app python -m scripts.seed_demo`. Пароль для демо-аккаунтов хранится в `.env` как `DEMO_PASSWORD`; скрипт не выводит его. Демо-входы: `viewer@vidosphera.example.com`, `moderator@vidosphera.example.com`, `admin@vidosphera.example.com`, `creator@vidosphera.example.com`. Seed создаёт метаданные демо-видео и комментарии; видеофайла демо-ролика в MinIO нет.
+После запуска выполни `docker compose exec app python -m scripts.seed_demo`. Пароль для демо-аккаунтов хранится в `.env` как `DEMO_PASSWORD`; скрипт не выводит его. Демо-входы: `viewer@vidosphera.example.com`, `moderator@vidosphera.example.com`, `admin@vidosphera.example.com`, `creator@vidosphera.example.com`. Seed создаёт короткий тестовый ролик через FFmpeg и сохраняет его в MinIO вместе с превью, а также добавляет демо-аккаунты и комментарии.
 
 ## Проверки
 

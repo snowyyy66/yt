@@ -11,4 +11,4 @@ PostgreSQL is the source of truth for users, uploaded media metadata, grants, co
 - `subscriptions` prevents duplicate channel follows.
 - `playlists` belongs to a user; `playlist_items` links videos to a playlist and enforces uniqueness.
 
-The static parody feed entries are presentation fixtures. The demo seed script creates a database record and comments for one fixture, but no playable bytes for that fixture.
+The static parody feed entries are presentation fixtures. The seed script creates one playable test clip and its thumbnail in MinIO, alongside account and comment records.
