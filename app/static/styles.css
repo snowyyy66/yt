@@ -8,3 +8,4 @@
 
 .thumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
 #save-video-panel{padding:10px 0}#save-video-panel select{padding:8px;border:1px solid #aaa;border-radius:6px;margin:0 6px}#save-video-panel button{padding:8px 10px;border:0;border-radius:8px;background:#f2f2f2;cursor:pointer}
+.modal [hidden]{display:none!important}

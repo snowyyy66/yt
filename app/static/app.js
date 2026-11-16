@@ -151,3 +151,14 @@ document.addEventListener('click',async event=>{
 });
 
 document.querySelector('#video-visibility').addEventListener('change',event=>{document.querySelector('#grant-field').hidden=event.target.value!=='private'});
+const voiceButton=document.querySelector('#voice-search');
+voiceButton.addEventListener('click',()=>{
+  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SpeechRecognition){voiceButton.title='Голосовой поиск не поддерживается этим браузером';voiceButton.setAttribute('aria-label',voiceButton.title);return}
+  const recognition=new SpeechRecognition();recognition.lang='ru-RU';recognition.interimResults=false;
+  voiceButton.setAttribute('aria-label','Слушаю запрос');
+  recognition.onresult=event=>{document.querySelector('#search-input').value=event.results[0][0].transcript;document.querySelector('#search-form').requestSubmit()};
+  recognition.onerror=()=>{voiceButton.setAttribute('aria-label','Голосовой поиск');voiceButton.title='Не удалось распознать запрос'};
+  recognition.onend=()=>voiceButton.setAttribute('aria-label','Голосовой поиск');
+  recognition.start();
+});
