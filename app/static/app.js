@@ -13,7 +13,9 @@ let activeCategory='Все';
 let query='';
 const feed=document.querySelector('#feed');
 const chips=document.querySelector('#chips');
+let activeVideoId=null;
 const escapeHtml=(value)=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const formatCount=value=>new Intl.NumberFormat('ru-RU').format(value||0);
 function render(){
   chips.innerHTML=categories.map(category=>`<button class="chip ${activeCategory===category?'active':''}" data-category="${category}">${category}</button>`).join('');
   const shown=videos.filter(video=>(activeCategory==='Все'||video.category===activeCategory)&&(`${video.title} ${video.channel}`.toLowerCase().includes(query.toLowerCase())));
@@ -21,15 +23,24 @@ function render(){
 }
 function openVideo(id){
   const video=videos.find(item=>item.id===id); if(!video)return;
+  activeVideoId=id;
   const history=JSON.parse(localStorage.getItem('history')||'[]').filter(item=>item!==id);history.unshift(id);localStorage.setItem('history',JSON.stringify(history.slice(0,50)));
-  const liked=JSON.parse(localStorage.getItem('liked')||'{}')[id];
-  document.querySelector('#player-content').innerHTML=`<div class="player-frame ${video.color}"><span>${video.scene}</span></div><div class="player-details"><h2>${escapeHtml(video.title)}</h2><p>${escapeHtml(video.channel)} · ${video.views}</p><div class="player-actions"><button id="like-button">${liked?'♥':'♡'} Нравится <span>${liked?'1 248':'1 247'}</span></button><button id="subscribe-button">Подписаться, пока не передумал</button><button id="share-button">Поделиться</button><button id="save-video-button">Сохранить в плейлист</button></div><div id="save-video-panel" class="hidden"></div><div class="comment-box"><b>Комментарии (3)</b><p><input id="comment-input" placeholder="Оставь комментарий, он попадёт в интернет"><button id="comment-submit">Отправить</button></p><div id="comments"><div class="comment">@чайник_с_крышкой: пришёл за рецептом, остался из-за рекламы</div><div class="comment">@алгоритм: вам также понравится это видео (возможно)</div></div></div></div>`;
-  document.querySelector('#player-dialog').showModal();
-  fetch(`/api/videos/${id}/comments`).then(response=>response.ok?response.json():[]).then(items=>{if(items.length){document.querySelector('#comments').innerHTML=items.map(item=>`<div class="comment">@${escapeHtml(item.author)}: ${escapeHtml(item.text)}</div>`).join('')}}).catch(()=>{});
-  if(video.uploaded){fetch(`/api/videos/${id}/play`,{headers:tokenHeaders()}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.detail||'Видео недоступно');const frame=document.querySelector('.player-frame');frame.innerHTML=`<video controls autoplay playsinline src="${escapeHtml(result.url)}" style="width:100%;height:100%;object-fit:contain"></video>`}).catch(error=>{const frame=document.querySelector('.player-frame');frame.innerHTML=`<p class="demo-player-note">${escapeHtml(error.message)}</p>`})}else{document.querySelector('.player-frame').innerHTML='<p class="demo-player-note">Демо-заставка: исходного ролика нет. Загрузи своё видео, чтобы проверить настоящий плеер.</p>'}
-  document.querySelector('#like-button').onclick=()=>{const state=JSON.parse(localStorage.getItem('liked')||'{}');state[id]=!state[id];localStorage.setItem('liked',JSON.stringify(state));openVideo(id)};
+  const demoComments=[];
+  document.querySelector('#player-content').innerHTML=`<div class="watch-layout"><section class="watch-primary"><div class="player-frame ${video.color}"><span>${video.scene}</span></div><div class="player-details"><h2>${escapeHtml(video.title)}</h2><div class="watch-meta"><div class="watch-channel"><div class="channel-avatar">${video.scene}</div><div><strong>${escapeHtml(video.channel)}</strong><small>${escapeHtml(video.views)}</small></div></div><div class="player-actions"><button id="subscribe-button" class="subscribe-button">Подписаться</button><div class="engagement-group"><button id="like-button" aria-pressed="false"><span aria-hidden="true">♡</span><span>Нравится</span><span data-like-count>0</span></button></div><button id="share-button">Поделиться</button><button id="save-video-button">Сохранить</button><button id="report-watch-button" aria-label="Пожаловаться">⋮</button></div></div><div id="save-video-panel" class="save-video-panel hidden"></div><section class="description-panel"><strong>${escapeHtml(video.channel)}</strong><p>${video.uploaded?escapeHtml(video.description||'Описание не добавлено.'): 'Демо-ролик Видосферы. Название и статистика вымышлены.'}</p></section><section class="comment-box"><div class="comment-heading"><h3 id="comment-count">Комментарии (${demoComments.length})</h3><span>${video.uploaded?'':'Пример демо-обсуждения'}</span></div><form id="comment-form" class="comment-composer"><textarea id="comment-input" rows="1" maxlength="2000" placeholder="Оставь комментарий" aria-label="Оставь комментарий" required></textarea><div class="comment-form-footer"><p id="comment-status" role="status"></p><button id="comment-submit" class="comment-submit" type="submit">Отправить</button></div></form><div id="comments" aria-live="polite"></div></section></div></section><aside class="watch-recommendations"><h3>Следом в ленте</h3>${videos.filter(item=>item.id!==id).slice(0,4).map(item=>`<button class="watch-recommendation" data-watch-next="${item.id}"><span class="recommendation-thumb ${item.color}">${item.thumbnail?`<img src="${escapeHtml(item.thumbnail)}" alt="">`:`<b>${escapeHtml(item.word||'ДЕМО')}</b>`}<small>${escapeHtml(item.duration)}</small></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.channel)} · ${escapeHtml(item.views)}</small></span></button>`).join('')}</aside></div>`;
+  const commentList=document.querySelector('#comments');
+  const showComments=items=>{
+    document.querySelector('#comment-count').textContent=`Комментарии (${items.length})`;
+    commentList.innerHTML=items.length?items.map(item=>`<article class="comment"><div class="comment-avatar">${escapeHtml(item.author.slice(0,1).toUpperCase())}</div><div><strong>${escapeHtml(item.author)}</strong><p>${escapeHtml(item.text)}</p></div></article>`).join(''):'<p class="empty-comments">Пока тихо. Начни разговор первым.</p>';
+  };
+  showComments(demoComments);
+  const playerDialog=document.querySelector('#player-dialog');
+  playerDialog.showModal();
+  playerDialog.scrollTop=0;
+  fetch(`/api/videos/${id}/comments`,{headers:tokenHeaders()}).then(async response=>{if(!response.ok)throw new Error('Не удалось загрузить комментарии');showComments(await response.json());document.querySelector('.comment-heading > span').textContent=''}).catch(()=>{document.querySelector('#comment-status').textContent='Не удалось загрузить комментарии.'});
+  fetch(`/api/videos/${id}/like`,{headers:tokenHeaders()}).then(async response=>{if(!response.ok)throw new Error('Лайки недоступны');const state=await response.json();const button=document.querySelector('#like-button');button.setAttribute('aria-pressed',String(state.liked));button.classList.toggle('is-liked',state.liked);button.querySelector('[aria-hidden="true"]').textContent=state.liked?'♥':'♡';button.querySelector('[data-like-count]').textContent=formatCount(state.count)}).catch(()=>{});
+  if(video.uploaded){fetch(`/api/videos/${id}/play`,{headers:tokenHeaders()}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.detail||'Видео недоступно');const frame=document.querySelector('.player-frame');frame.innerHTML=`<video controls autoplay playsinline src="${escapeHtml(result.url)}"></video>`}).catch(error=>{const frame=document.querySelector('.player-frame');frame.innerHTML=`<p class="demo-player-note">${escapeHtml(error.message)}</p>`})}else{document.querySelector('.player-frame').innerHTML='<div class="demo-player-note"><span aria-hidden="true">▶</span><strong>Демо-заставка</strong><p>Исходного ролика пока нет. Загрузи своё видео, чтобы проверить настоящий плеер.</p></div>'}
   document.querySelector('#subscribe-button').onclick=async(event)=>{const item=videos.find(entry=>entry.id===id);const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}if(!item?.ownerId){event.currentTarget.textContent='Демо-канал не принимает подписки';return}const response=await fetch(`/api/channels/${item.ownerId}/subscribe`,{method:'PUT',headers:tokenHeaders()});if(response.ok){const result=await response.json();event.currentTarget.textContent=result.subscribed?'Вы подписаны':'Подписаться, пока не передумал'}};
-  document.querySelector('#share-button').onclick=async()=>{await navigator.clipboard?.writeText(location.href+'?v='+id);document.querySelector('#share-button').textContent='Ссылка скопирована'};
+  document.querySelector('#share-button').onclick=async()=>{try{await navigator.clipboard.writeText(new URL(`/?v=${encodeURIComponent(id)}`,location.origin).href);document.querySelector('#share-button').textContent='Ссылка скопирована'}catch{document.querySelector('#comment-status').textContent='Не удалось скопировать ссылку. Скопируй адрес страницы вручную.'}};
   document.querySelector('#save-video-button').onclick=async()=>{
     if(!localStorage.getItem('token')){document.querySelector('#account-dialog').showModal();return}
     const response=await fetch('/api/playlists',{headers:tokenHeaders()});const playlists=await response.json();const panel=document.querySelector('#save-video-panel');
@@ -37,7 +48,6 @@ function openVideo(id){
     panel.classList.remove('hidden');panel.innerHTML=`<label>Добавить в <select id="save-playlist">${playlists.map(item=>`<option value="${item.id}">${escapeHtml(item.title)}</option>`).join('')}</select></label><button id="confirm-save-video">Сохранить</button>`;
     document.querySelector('#confirm-save-video').onclick=async()=>{const playlistId=document.querySelector('#save-playlist').value;const result=await fetch(`/api/playlists/${playlistId}/videos/${id}`,{method:'POST',headers:tokenHeaders()});panel.textContent=result.ok?'Добавлено. Теперь оно точно не потеряется.':'Не удалось добавить видео'};
   };
-  document.querySelector('#comment-submit').onclick=()=>{const input=document.querySelector('#comment-input');if(!input.value.trim())return;const item=document.createElement('div');item.className='comment';item.textContent='@ты: '+input.value;document.querySelector('#comments').prepend(item);input.value=''};
 }
 render();
 chips.addEventListener('click',event=>{if(event.target.dataset.category){activeCategory=event.target.dataset.category;render()}});
@@ -46,12 +56,10 @@ feed.addEventListener('keydown',event=>{if((event.key==='Enter'||event.key===' '
 document.querySelector('#search-form').addEventListener('submit',event=>{event.preventDefault();query=document.querySelector('#search-input').value;activeCategory='Все';render()});
 document.querySelector('#menu-button').onclick=()=>document.querySelector('#sidebar').classList.toggle('hidden');
 document.querySelector('#upload-open').onclick=()=>document.querySelector('#upload-dialog').showModal();
-document.querySelector('#account-open').onclick=()=>document.querySelector('#account-dialog').showModal();
+document.querySelector('#account-open').onclick=()=>{if(localStorage.getItem('token')){location.href='/?page=you';return}document.querySelector('#account-dialog').showModal()};
 document.querySelector('#signin-side').onclick=()=>document.querySelector('#account-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>button.closest('dialog').close());
 document.querySelector('#register-toggle').onclick=()=>{const name=document.querySelector('#name-field');const isHidden=name.hidden;name.hidden=!isHidden;document.querySelector('#account-title').textContent=isHidden?'Создание аккаунта':'Вход в Видосферу';document.querySelector('#account-form [name=password]').autocomplete=isHidden?'new-password':'current-password';document.querySelector('#register-toggle').textContent=isHidden?'Уже есть аккаунт? Войти':'Впервые здесь? Создать аккаунт'};
-document.querySelector('#account-form').onsubmit=event=>{event.preventDefault();document.querySelector('#account-status').textContent='Форма готова. Подключение регистрации появится вместе с серверной авторизацией.'};
-document.querySelector('#upload-form').onsubmit=event=>{event.preventDefault();const file=document.querySelector('#video-file').files[0];if(!file)return;const bar=document.querySelector('#upload-progress');const status=document.querySelector('#upload-status');let value=0;const timer=setInterval(()=>{value=Math.min(100,value+8);bar.value=value;if(value===100){clearInterval(timer);status.textContent='Демо-загрузка завершена. Серверное хранилище подключается в следующем этапе.'}},120)};
 const accountForm=document.querySelector('#account-form');
 accountForm.onsubmit=async event=>{
   event.preventDefault();
@@ -64,26 +72,56 @@ accountForm.onsubmit=async event=>{
     if(!response.ok)throw new Error(result.detail||'Не удалось войти');
     localStorage.setItem('token',result.access_token);
     document.querySelector('#account-dialog').close();
-    document.querySelector('#account-open').textContent=values.name?.[0]?.toUpperCase()||values.email[0].toUpperCase();
+    const accountButton=document.querySelector('#account-open');
+    const displayName=values.name?.trim()||values.email;
+    accountButton.textContent=displayName[0].toUpperCase();
+    accountButton.setAttribute('aria-label',`Аккаунт ${displayName}`);
   }catch(error){status.textContent=error.message}
 };
 const tokenHeaders=()=>{const token=localStorage.getItem('token');return token?{Authorization:`Bearer ${token}`}:{}};
+async function syncAccountButton(){
+  if(!localStorage.getItem('token'))return;
+  try{
+    const response=await fetch('/api/auth/me',{headers:tokenHeaders()});
+    if(!response.ok){localStorage.removeItem('token');return}
+    const user=await response.json();const button=document.querySelector('#account-open');
+    button.textContent=user.name[0].toUpperCase();button.setAttribute('aria-label',`Аккаунт ${user.name}`);
+  }catch{}
+}
+syncAccountButton();
+document.querySelector('#player-content').addEventListener('submit',async event=>{
+  if(!event.target.matches('#comment-form'))return;
+  event.preventDefault();
+  const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}
+  const input=document.querySelector('#comment-input');const button=document.querySelector('#comment-submit');const status=document.querySelector('#comment-status');
+  if(!input.value.trim())return;
+  button.disabled=true;status.textContent='Отправляем…';
+  try{
+    const response=await fetch(`/api/videos/${activeVideoId}/comments`,{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify({text:input.value.trim()})});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.detail||'Не удалось отправить комментарий');
+    const list=document.querySelector('#comments');list.querySelector('.empty-comments')?.remove();
+    const item=document.createElement('article');item.className='comment';item.innerHTML=`<div class="comment-avatar">${escapeHtml(result.author.slice(0,1).toUpperCase())}</div><div><strong>${escapeHtml(result.author)}</strong><p>${escapeHtml(result.text)}</p></div>`;list.prepend(item);
+    const count=list.querySelectorAll('.comment').length;document.querySelector('#comment-count').textContent=`Комментарии (${count})`;input.value='';status.textContent='';
+  }catch(error){status.textContent=error.message}finally{button.disabled=false}
+});
 document.addEventListener('click',async event=>{
-  if(event.target.id==='like-button'){
+  const next=event.target.closest('[data-watch-next]');if(next){openVideo(next.dataset.watchNext);return}
+  if(event.target.closest('#like-button')){
     event.preventDefault();event.stopImmediatePropagation();
     const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}
-    const id=document.querySelector('#player-dialog').querySelector('.player-details h2').textContent;
-    const video=videos.find(item=>item.title===id);if(!video)return;
-    const response=await fetch(`/api/videos/${video.id}/like`,{method:'PUT',headers:tokenHeaders()});
-    if(response.ok){const result=await response.json();event.target.textContent=result.liked?'♥ Нравится':'♡ Нравится'}
+    const button=event.target.closest('#like-button');if(!button||!activeVideoId)return;
+    button.disabled=true;
+    try{const response=await fetch(`/api/videos/${activeVideoId}/like`,{method:'PUT',headers:tokenHeaders()});const result=await response.json();if(!response.ok)throw new Error(result.detail||'Не удалось поставить лайк');button.setAttribute('aria-pressed',String(result.liked));button.classList.toggle('is-liked',result.liked);button.querySelector('[aria-hidden="true"]').textContent=result.liked?'♥':'♡';button.querySelector('[data-like-count]').textContent=formatCount(result.count)}catch(error){document.querySelector('#comment-status').textContent=error.message}finally{button.disabled=false}
   }
-  if(event.target.id==='comment-submit'){
-    event.preventDefault();event.stopImmediatePropagation();
+  const watchReport=event.target.closest('#report-watch-button');
+  if(watchReport){
+    event.preventDefault();
     const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}
-    const input=document.querySelector('#comment-input');const videoTitle=document.querySelector('#player-dialog .player-details h2').textContent;const video=videos.find(item=>item.title===videoTitle);
-    if(!input.value.trim()||!video)return;
-    const response=await fetch(`/api/videos/${video.id}/comments`,{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify({text:input.value})});
-    if(response.ok){const comment=await response.json();const item=document.createElement('div');item.className='comment';item.textContent=`@${comment.author}: ${comment.text}`;document.querySelector('#comments').prepend(item);input.value=''}
+    const reason=prompt('Что не так с этим видео?');if(!reason)return;
+    const response=await fetch(`/api/videos/${activeVideoId}/reports`,{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify({reason})});
+    if(response.ok){watchReport.textContent='✓';watchReport.setAttribute('aria-label','Жалоба отправлена')}
+    else document.querySelector('#comment-status').textContent='Не удалось отправить жалобу.';
   }
   const reportButton=event.target.closest('[data-report]');
   if(reportButton){
@@ -109,7 +147,7 @@ async function renderRoute(){
   const params=new URLSearchParams(location.search);const page=params.get('page');const channelId=params.get('channel');const videoId=params.get('v');
   if(videoId){const response=await fetch(`/api/videos/${videoId}`,{headers:tokenHeaders()});const item=await response.json();if(response.ok){if(!videos.some(video=>video.id===item.id))videos.unshift({...item,scene:'🎬',word:'ТВОЁ ВИДЕО'});openVideo(videoId)}else{feed.innerHTML=`<p>${escapeHtml(item.detail||'Видео недоступно')}</p>`}return}
   if(!page&&!channelId){
-    try{const response=await fetch('/api/videos');if(response.ok){const uploaded=await response.json();for(const item of uploaded){const normalized={id:item.id,title:item.title,channel:item.channel,views:item.views,age:item.age,color:item.color||'slate',duration:item.duration||'--:--',category:item.category||'Новое',scene:'🎬',word:'НОВЫЙ РОЛИК',uploaded:Boolean(item.uploaded),ownerId:item.owner_id,thumbnail:item.thumbnail};const index=videos.findIndex(video=>video.id===item.id);if(index<0)videos.unshift(normalized);else videos[index]={...videos[index],...normalized}}}}catch{};
+    try{const response=await fetch('/api/videos');if(response.ok){const uploaded=await response.json();for(const item of uploaded){if(!item.uploaded)continue;const normalized={id:item.id,title:item.title,description:item.description,channel:item.channel,views:item.views,age:item.age,color:item.color||'slate',duration:item.duration||'--:--',category:item.category||'Новое',scene:'▶',word:'СВЕЖАЯ ЗАПИСЬ',uploaded:true,ownerId:item.owner_id,thumbnail:item.thumbnail};const index=videos.findIndex(video=>video.id===item.id);if(index<0)videos.unshift(normalized);else videos[index]={...videos[index],...normalized}}}}catch{};
     originalRender();return;
   }
   chips.innerHTML='';feed.innerHTML='';
