@@ -14,9 +14,9 @@ bash deploy.sh
 
 Для локальной разработки скопируй `.env.example` в `.env` и выполни `docker compose up --build -d`.
 
-## Фронтенд на Vercel
+## Vercel
 
-Vercel раздаёт только статический фронтенд и проксирует API; база, S3-хранилище и FFmpeg worker должны работать на отдельном сервере. Подготовка и ограничения описаны в [docs/vercel.md](docs/vercel.md).
+Vercel запускает FastAPI и интерфейс одним проектом. Подготовка managed PostgreSQL/S3 и ограничения Vercel описаны в [docs/vercel.md](docs/vercel.md).
 
 ## Демо-данные
 
