@@ -166,8 +166,13 @@ def toggle_like(video_id: str, user: User = Depends(current_user), session: Sess
     else:
         like.active = not like.active
     session.commit()
-    count = session.scalar(select(Like).where(Like.video_id == video_id, Like.active.is_(True)).count()) if False else None
-    return {"liked": like.active}
+    count = session.scalar(
+        select(func.count()).select_from(Like).where(
+            Like.video_id == video_id,
+            Like.active.is_(True),
+        )
+    )
+    return {"liked": like.active, "count": count or 0}
 
 class AccessInput(BaseModel):
     email: EmailStr
