@@ -14,6 +14,10 @@ bash deploy.sh
 
 Для локальной разработки скопируй `.env.example` в `.env` и выполни `docker compose up --build -d`.
 
+## Фронтенд на Vercel
+
+Vercel раздаёт только статический фронтенд и проксирует API; база, S3-хранилище и FFmpeg worker должны работать на отдельном сервере. Подготовка и ограничения описаны в [docs/vercel.md](docs/vercel.md).
+
 ## Демо-данные
 
 После запуска выполни `docker compose exec app python -m scripts.seed_demo`. Пароль для демо-аккаунтов хранится в `.env` как `DEMO_PASSWORD`; скрипт не выводит его. Демо-входы: `viewer@vidosphera.example.com`, `moderator@vidosphera.example.com`, `admin@vidosphera.example.com`, `creator@vidosphera.example.com`. Seed создаёт короткий тестовый ролик через FFmpeg и сохраняет его в MinIO вместе с превью, а также добавляет демо-аккаунты и комментарии.

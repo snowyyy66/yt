@@ -9,3 +9,5 @@ htmlcov/
 yt.egg-info/
 yt.db
 tests.db
+/vercel-dist/
+/.vercel/
