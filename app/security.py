@@ -6,7 +6,9 @@ import os
 import secrets
 import time
 
-SECRET = os.getenv("APP_SECRET", "local-development-secret-change-this")
+SECRET = os.getenv("APP_SECRET") or __import__("secrets").token_urlsafe(48)
+if os.getenv("ENVIRONMENT") == "production" and not os.getenv("APP_SECRET"):
+    raise RuntimeError("APP_SECRET must be set in production")
 
 
 def hash_password(password: str) -> str:

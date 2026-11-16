@@ -1,7 +1,14 @@
-# Database design
+# Database schema
 
-PostgreSQL stores normalized application metadata. Planned entities are `users`, `videos`, `video_access_grants`, `comments`, `video_likes`, `channels`, `subscriptions`, `playlists`, `playlist_items`, and `reports`.
+PostgreSQL is the source of truth for users, uploaded media metadata, grants, comments, likes, subscriptions, playlists, and reports. Media bytes live in MinIO under server-generated keys. The schema currently uses SQLAlchemy metadata creation at application startup; a versioned migration system is still needed before long-lived production operation.
 
-Users own videos and channels. A video stores visibility, moderation state, processing state, and object keys. A grant links one private video to one permitted user. Comments, likes, reports, and playlist entries reference their owning records with foreign keys. Unique constraints will prevent duplicate likes, subscriptions, and grants.
+## Relationships
 
-The schema will be introduced through versioned migrations as each API slice is implemented. Video and thumbnail bytes remain in S3-compatible object storage.
+- `users` owns videos and playlists, and acts as the target for channel subscriptions.
+- `videos.owner_id` references `users.id`; `videos.object_key` references a MinIO object.
+- `video_access_grants` links a private video to an allowed user with a unique pair constraint.
+- `comments`, `video_likes`, and `reports` point to a video and its author/reporter. `video_likes` enforces one row per user/video pair.
+- `subscriptions` prevents duplicate channel follows.
+- `playlists` belongs to a user; `playlist_items` links videos to a playlist and enforces uniqueness.
+
+The static parody feed entries are presentation fixtures. The demo seed script creates a database record and comments for one fixture, but no playable bytes for that fixture.

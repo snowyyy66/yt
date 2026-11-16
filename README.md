@@ -14,6 +14,10 @@ chmod +x deploy.sh && ./deploy.sh
 
 Для локальной разработки скопируй `.env.example` в `.env` и выполни `docker compose up --build -d`.
 
+## Демо-данные
+
+После запуска выполни `docker compose exec app python -m scripts.seed_demo`. Пароль для демо-аккаунтов хранится в `.env` как `DEMO_PASSWORD`; скрипт не выводит его. Демо-входы: `viewer@vidosphera.test`, `moderator@vidosphera.test`, `admin@vidosphera.test`, `creator@vidosphera.test`. Seed создаёт метаданные демо-видео и комментарии; видеофайла демо-ролика в MinIO нет.
+
 ## Проверки
 
 ```sh

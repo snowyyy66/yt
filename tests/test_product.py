@@ -17,4 +17,4 @@ def test_video_api_lists_demo_videos():
     response = client.get("/api/videos")
 
     assert response.status_code == 200
-    assert response.json()[0]["title"] == "Как я нажал «пропустить рекламу» 47 раз"
+    assert any(item["title"] == "Как я нажал «пропустить рекламу» 47 раз" for item in response.json())

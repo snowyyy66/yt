@@ -24,8 +24,10 @@ function openVideo(id){
   const liked=JSON.parse(localStorage.getItem('liked')||'{}')[id];
   document.querySelector('#player-content').innerHTML=`<div class="player-frame ${video.color}"><span>${video.scene}</span></div><div class="player-details"><h2>${escapeHtml(video.title)}</h2><p>${escapeHtml(video.channel)} · ${video.views}</p><div class="player-actions"><button id="like-button">${liked?'♥':'♡'} Нравится <span>${liked?'1 248':'1 247'}</span></button><button id="subscribe-button">Подписаться, пока не передумал</button><button id="share-button">Поделиться</button></div><div class="comment-box"><b>Комментарии (3)</b><p><input id="comment-input" placeholder="Оставь комментарий, он попадёт в интернет"><button id="comment-submit">Отправить</button></p><div id="comments"><div class="comment">@чайник_с_крышкой: пришёл за рецептом, остался из-за рекламы</div><div class="comment">@алгоритм: вам также понравится это видео (возможно)</div></div></div></div>`;
   document.querySelector('#player-dialog').showModal();
+  fetch(`/api/videos/${id}/comments`).then(response=>response.ok?response.json():[]).then(items=>{if(items.length){document.querySelector('#comments').innerHTML=items.map(item=>`<div class="comment">@${escapeHtml(item.author)}: ${escapeHtml(item.text)}</div>`).join('')}}).catch(()=>{});
+  fetch(`/api/videos/${id}/play`).then(response=>response.ok?response.json():null).then(result=>{if(result?.url){const frame=document.querySelector('.player-frame');frame.innerHTML=`<video controls autoplay playsinline src="${escapeHtml(result.url)}" style="width:100%;height:100%;object-fit:contain"></video>`}}).catch(()=>{});
   document.querySelector('#like-button').onclick=()=>{const state=JSON.parse(localStorage.getItem('liked')||'{}');state[id]=!state[id];localStorage.setItem('liked',JSON.stringify(state));openVideo(id)};
-  document.querySelector('#subscribe-button').onclick=(event)=>{event.currentTarget.textContent='Вы подписаны. Отписаться будет сложно';event.currentTarget.disabled=true};
+  document.querySelector('#subscribe-button').onclick=async(event)=>{const item=videos.find(entry=>entry.id===id);const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}if(!item?.ownerId){event.currentTarget.textContent='Демо-канал не принимает подписки';return}const response=await fetch(`/api/channels/${item.ownerId}/subscribe`,{method:'PUT',headers:tokenHeaders()});if(response.ok){const result=await response.json();event.currentTarget.textContent=result.subscribed?'Вы подписаны':'Подписаться, пока не передумал'}};
   document.querySelector('#share-button').onclick=async()=>{await navigator.clipboard?.writeText(location.href+'?v='+id);document.querySelector('#share-button').textContent='Ссылка скопирована'};
   document.querySelector('#comment-submit').onclick=()=>{const input=document.querySelector('#comment-input');if(!input.value.trim())return;const item=document.createElement('div');item.className='comment';item.textContent='@ты: '+input.value;document.querySelector('#comments').prepend(item);input.value=''};
 }
@@ -94,3 +96,37 @@ document.querySelector('#upload-form').onsubmit=event=>{
   request.onerror=()=>{status.textContent='Сеть прервалась. Попробуй загрузить ещё раз.'};
   request.send(values);
 };
+const originalRender=render;
+async function renderRoute(){
+  const params=new URLSearchParams(location.search);const page=params.get('page');const channelId=params.get('channel');
+  if(!page&&!channelId){
+    try{const response=await fetch('/api/videos');if(response.ok){const uploaded=await response.json();const existing=new Set(videos.map(item=>item.id));for(const item of uploaded){if(existing.has(item.id))continue;videos.unshift({id:item.id,title:item.title,channel:item.channel,views:item.views,age:item.age,color:item.color||'slate',duration:item.duration||'--:--',category:item.category||'Новое',scene:'🎬',word:'НОВЫЙ РОЛИК',uploaded:Boolean(item.uploaded),ownerId:item.owner_id})}}}catch{};
+    originalRender();return;
+  }
+  chips.innerHTML='';feed.innerHTML='';
+  if(page==='moderation'){
+    feed.innerHTML='<h1>Модераторская: место, где спорные ролики ждут вердикта</h1><p>Загружаем жалобы…</p>';
+    const response=await fetch('/api/moderation/reports',{headers:tokenHeaders()});const payload=await response.json();
+    if(!response.ok){feed.innerHTML=`<h1>Модераторская</h1><p>${escapeHtml(payload.detail||'Нужно войти с ролью модератора')}</p>`;return}
+    feed.innerHTML='<h1>Очередь жалоб</h1>'+payload.map(item=>`<article class="report-row"><b>${escapeHtml(item.video_id)}</b><p>${escapeHtml(item.reason)}</p><button data-hide="${item.video_id}">Скрыть видео</button></article>`).join('')||'<p>Пока никто ни на кого не пожаловался. Подозрительно.</p>';return;
+  }
+  if(page==='playlists'){
+    const response=await fetch('/api/playlists',{headers:tokenHeaders()});const payload=await response.json();
+    feed.innerHTML=`<h1>Плейлисты, которые ты точно пересмотришь</h1><form id="playlist-create"><input name="title" required placeholder="Название плейлиста"><select name="visibility"><option value="public">Открытый</option><option value="private">Приватный</option></select><button>Создать</button></form>${response.ok?payload.map(item=>`<article class="playlist-row"><b>${escapeHtml(item.title)}</b><small>${item.visibility==='private'?'Только ты':'Доступен всем'}</small></article>`).join(''):`<p>${escapeHtml(payload.detail||'Войди, чтобы открыть плейлисты')}</p>`}`;
+    document.querySelector('#playlist-create')?.addEventListener('submit',async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.currentTarget));const result=await fetch('/api/playlists',{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify(values)});if(result.ok)renderRoute()});return;
+  }
+  if(page==='channels'){
+    const response=await fetch('/api/channels/subscriptions',{headers:tokenHeaders()});const payload=await response.json();
+    feed.innerHTML=`<h1>Каналы, которым ты доверил своё время</h1>${response.ok?payload.map(item=>`<article class="playlist-row"><a href="/?channel=${item.id}">${escapeHtml(item.name)}</a></article>`).join(''):`<p>${escapeHtml(payload.detail||'Войди, чтобы увидеть подписки')}</p>`}`;return;
+  }
+  if(channelId){
+    const response=await fetch(`/api/channels/${channelId}/videos`);const payload=await response.json();
+    feed.innerHTML=`<h1>${escapeHtml(payload.channel?.name||'Канал')}</h1><p>Канал автора. Здесь собраны его открытые видео.</p>${(payload.videos||[]).map(item=>`<article class="playlist-row"><button data-open-video="${item.id}">${escapeHtml(item.title)}</button></article>`).join('')||`<p>${escapeHtml(payload.detail||'Пока автор ничего не выложил')}</p>`}`;return;
+  }
+  originalRender();
+}
+renderRoute();
+document.addEventListener('click',async event=>{
+  const hide=event.target.closest('[data-hide]');if(hide){const result=await fetch(`/api/moderation/videos/${hide.dataset.hide}/hide`,{method:'POST',headers:tokenHeaders()});if(result.ok)hide.closest('.report-row').remove()}
+  const open=event.target.closest('[data-open-video]');if(open)openVideo(open.dataset.openVideo);
+});

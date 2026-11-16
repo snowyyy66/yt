@@ -27,7 +27,7 @@ def test_upload_and_private_video_grant_enforce_access(monkeypatch):
     with TestClient(app) as client:
         owner,_=account(client,'Автор')
         viewer,viewer_email=account(client,'Зритель')
-        upload=client.post('/api/videos',headers=owner,data={'title':'Секретный ролик','visibility':'private'},files={'file':('secret.mp4',b'video-data','video/mp4')})
+        upload=client.post('/api/videos',headers=owner,data={'title':'Секретный ролик','visibility':'private'},files={'file':('secret.mp4',b'\x00\x00\x00\x18ftypmp42video-data','video/mp4')})
         assert upload.status_code == 201
         video_id=upload.json()['id']
         assert client.get(f'/api/videos/{video_id}/play').status_code == 401

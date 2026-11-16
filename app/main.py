@@ -22,18 +22,27 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "yt"}
 
 
-@app.get("/api/videos", tags=["videos"])
-def list_videos() -> list[dict[str, str]]:
-    return VIDEOS
-
-
 @app.get("/api/videos/{video_id}", tags=["videos"])
 def get_video(video_id: str):
-    return next((video for video in VIDEOS if video["id"] == video_id), {"detail": "Видео не найдено"})
+    from app.media_models import VideoRecord
+    from app.models import SessionLocal
+
+    with SessionLocal() as session:
+        record = session.get(VideoRecord, video_id)
+        if record is not None:
+            if record.hidden or record.visibility != "public":
+                raise HTTPException(status_code=404, detail="Видео не найдено")
+            return {"id": record.id, "title": record.title, "description": record.description}
+    sample = next((video for video in VIDEOS if video["id"] == video_id), None)
+    if sample is None:
+        raise HTTPException(status_code=404, detail="Видео не найдено")
+    return sample
 
 
 @app.get("/{page}", include_in_schema=False)
 def frontend_page(page: str):
+    if page not in {"watch", "channel", "results", "upload", "playlist", "login", "register", "moderation"}:
+        raise HTTPException(status_code=404, detail="Страница не найдена")
     return FileResponse("app/static/index.html")
 
 
@@ -158,6 +167,11 @@ def upload_video(file: UploadFile = File(...), title: str = Form(min_length=1, m
         raise HTTPException(status_code=422, detail="Выбери открытый или приватный доступ")
     if not file.content_type or not file.content_type.startswith("video/"):
         raise HTTPException(status_code=415, detail="Нужен файл видеоформата")
+    signature = file.file.read(12)
+    file.file.seek(0)
+    valid_signature = signature.startswith(b"\x1a\x45\xdf\xa3") or signature.startswith(b"RIFF") and signature[8:12] == b"AVI " or signature[4:8] == b"ftyp"
+    if not valid_signature:
+        raise HTTPException(status_code=415, detail="Файл не похож на видео MP4, MOV, WebM или AVI")
     if file.size is None or file.size == 0 or file.size > 2 * 1024 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Размер видео должен быть от 1 байта до 2 ГБ")
     from app import storage
@@ -171,7 +185,15 @@ def upload_video(file: UploadFile = File(...), title: str = Form(min_length=1, m
         raise HTTPException(status_code=503, detail="Хранилище видео временно недоступно") from error
     video = VideoRecord(id=video_id, owner_id=user.id, title=title.strip(), description=description, object_key=key, visibility=visibility, status="ready")
     session.add(video)
-    session.commit()
+    try:
+        session.commit()
+    except Exception as error:
+        session.rollback()
+        try:
+            storage.client().remove_object(storage.bucket_name(), key)
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="Не удалось сохранить метаданные видео") from error
     return {"id": video.id, "title": video.title, "visibility": video.visibility, "status": video.status}
 
 
@@ -267,3 +289,100 @@ def hide_video(video_id: str, user: User = Depends(require_moderator), session: 
 
 from app.models import Base, engine
 Base.metadata.create_all(engine)
+from sqlalchemy import select
+
+
+@app.get("/api/videos", tags=["videos"])
+def list_videos(session: Session = Depends(db_session)) -> list[dict[str, object]]:
+    uploaded = session.scalars(select(VideoRecord).where(VideoRecord.visibility == "public", VideoRecord.hidden.is_(False), VideoRecord.status == "ready").order_by(VideoRecord.created_at.desc())).all()
+    records = [{"id": row.id, "title": row.title, "channel": session.get(User, row.owner_id).name, "views": "Новое видео", "age": "только что", "color": "slate", "duration": "--:--", "category": "Новое", "uploaded": True, "owner_id": row.owner_id} for row in uploaded]
+    hidden_ids = set(session.scalars(select(VideoRecord.id).where(VideoRecord.hidden.is_(True))).all())
+    return records + [video for video in VIDEOS if video["id"] not in hidden_ids]
+
+
+class PlaylistInput(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    visibility: str = "public"
+
+
+@app.post("/api/playlists", status_code=201, tags=["playlists"])
+def create_playlist(data: PlaylistInput, user: User = Depends(current_user), session: Session = Depends(db_session)):
+    if data.visibility not in {"public", "private"}:
+        raise HTTPException(status_code=422, detail="Неизвестный режим плейлиста")
+    from app.media_models import Playlist
+    playlist = Playlist(owner_id=user.id, title=data.title.strip(), visibility=data.visibility)
+    session.add(playlist)
+    session.commit()
+    return {"id": playlist.id, "title": playlist.title, "visibility": playlist.visibility}
+
+
+@app.get("/api/playlists", tags=["playlists"])
+def list_playlists(user: User = Depends(current_user), session: Session = Depends(db_session)):
+    from app.media_models import Playlist
+    rows = session.scalars(select(Playlist).where((Playlist.owner_id == user.id) | (Playlist.visibility == "public")).order_by(Playlist.id.desc())).all()
+    return [{"id": row.id, "title": row.title, "visibility": row.visibility} for row in rows]
+
+
+@app.post("/api/playlists/{playlist_id}/videos/{video_id}", status_code=201, tags=["playlists"])
+def add_to_playlist(playlist_id: int, video_id: str, user: User = Depends(current_user), session: Session = Depends(db_session)):
+    from app.media_models import Playlist, PlaylistItem
+    playlist = session.get(Playlist, playlist_id)
+    if playlist is None:
+        raise HTTPException(status_code=404, detail="Плейлист не найден")
+    if playlist.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Добавлять ролики может владелец плейлиста")
+    if not session.get(VideoRecord, video_id) and not any(video["id"] == video_id for video in VIDEOS):
+        raise HTTPException(status_code=404, detail="Видео не найдено")
+    if session.scalar(select(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id, PlaylistItem.video_id == video_id)):
+        return {"added": True}
+    item = PlaylistItem(playlist_id=playlist_id, video_id=video_id, position=session.scalar(select(func.count()).select_from(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id)) or 0)
+    session.add(item)
+    session.commit()
+    return {"added": True}
+
+
+@app.get("/api/playlists/{playlist_id}/videos", tags=["playlists"])
+def playlist_videos(playlist_id: int, authorization: str | None = Header(default=None), session: Session = Depends(db_session)):
+    from app.media_models import Playlist, PlaylistItem
+    playlist = session.get(Playlist, playlist_id)
+    if playlist is None:
+        raise HTTPException(status_code=404, detail="Плейлист не найден")
+    viewer = read_token(authorization[7:]) if authorization and authorization.startswith("Bearer ") else None
+    if playlist.visibility == "private" and viewer != playlist.owner_id:
+        raise HTTPException(status_code=403, detail="Этот плейлист приватный")
+    items = session.scalars(select(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id).order_by(PlaylistItem.position)).all()
+    videos = []
+    for item in items:
+        video = session.get(VideoRecord, item.video_id)
+        if video and not video.hidden and video.visibility == "public":
+            videos.append({"id": video.id, "title": video.title})
+        else:
+            sample = next((video for video in VIDEOS if video["id"] == item.video_id), None)
+            if sample:
+                videos.append({"id": sample["id"], "title": sample["title"]})
+    return {"id": playlist.id, "title": playlist.title, "videos": videos}
+@app.get("/api/channels/subscriptions", tags=["channels"])
+def subscribed_channels(user: User = Depends(current_user), session: Session = Depends(db_session)):
+    rows = session.scalars(select(Subscription).where(Subscription.subscriber_id == user.id)).all()
+    return [{"id": row.channel_id, "name": session.get(User, row.channel_id).name} for row in rows]
+
+def require_admin(user: User = Depends(current_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ только для администратора")
+    return user
+
+
+class RoleInput(BaseModel):
+    role: str
+
+
+@app.put("/api/admin/users/{user_id}/role", tags=["administration"])
+def set_user_role(user_id: int, data: RoleInput, _: User = Depends(require_admin), session: Session = Depends(db_session)):
+    if data.role not in {"user", "moderator", "admin"}:
+        raise HTTPException(status_code=422, detail="Допустимые роли: user, moderator, admin")
+    target = session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    target.role = data.role
+    session.commit()
+    return {"id": target.id, "role": target.role}
