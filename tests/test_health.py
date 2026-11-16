@@ -14,4 +14,5 @@ def test_openapi_schema_is_available():
     response = TestClient(app).get("/openapi.json")
 
     assert response.status_code == 200
-    assert response.json()["info"]["title"] == "YT"
+    assert response.json()["info"]["title"] == "Видосфера"
+
