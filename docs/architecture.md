@@ -6,4 +6,4 @@ Uploads require a bearer token, accept video MIME types up to 2 GiB, and use ser
 
 Passwords are hashed with scrypt. API tokens are signed HMAC tokens with a 24-hour expiry. Roles are `user`, `moderator`, and `admin`; moderation endpoints require one of the latter roles. The demo feed is static and the API stores newly uploaded media records in PostgreSQL.
 
-Redis is present for the planned processing queue. Transcoding, thumbnail generation, and adaptive streaming are not implemented yet; an uploaded video is marked `ready` after storage accepts it.
+Redis queues uploaded video IDs. A separate worker uses FFmpeg to normalize each file to MP4, generates a thumbnail, stores both objects in MinIO, and changes the video state from `processing` to `ready`. Failed jobs are marked `failed`. Adaptive HLS/DASH output is not implemented.

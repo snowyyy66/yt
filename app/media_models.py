@@ -13,6 +13,7 @@ class VideoRecord(Base):
     title: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, default="")
     object_key: Mapped[str] = mapped_column(String(255))
+    thumbnail_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     visibility: Mapped[str] = mapped_column(String(20), default="public")
     status: Mapped[str] = mapped_column(String(20), default="processing")
     hidden: Mapped[bool] = mapped_column(Boolean, default=False)

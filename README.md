@@ -7,7 +7,7 @@
 Требуются Docker Engine с Compose plugin и Python 3.12+ для генерации случайных секретов. Из корня репозитория:
 
 ```sh
-chmod +x deploy.sh && ./deploy.sh
+bash deploy.sh
 ```
 
 Скрипт создаёт `.env` со случайными секретами и запускает API, PostgreSQL, MinIO и Redis. API: <http://localhost:8000>, Swagger: <http://localhost:8000/docs>, MinIO Console: <http://localhost:9001>.
@@ -16,7 +16,7 @@ chmod +x deploy.sh && ./deploy.sh
 
 ## Демо-данные
 
-После запуска выполни `docker compose exec app python -m scripts.seed_demo`. Пароль для демо-аккаунтов хранится в `.env` как `DEMO_PASSWORD`; скрипт не выводит его. Демо-входы: `viewer@vidosphera.test`, `moderator@vidosphera.test`, `admin@vidosphera.test`, `creator@vidosphera.test`. Seed создаёт метаданные демо-видео и комментарии; видеофайла демо-ролика в MinIO нет.
+После запуска выполни `docker compose exec app python -m scripts.seed_demo`. Пароль для демо-аккаунтов хранится в `.env` как `DEMO_PASSWORD`; скрипт не выводит его. Демо-входы: `viewer@vidosphera.example.com`, `moderator@vidosphera.example.com`, `admin@vidosphera.example.com`, `creator@vidosphera.example.com`. Seed создаёт метаданные демо-видео и комментарии; видеофайла демо-ролика в MinIO нет.
 
 ## Проверки
 
@@ -32,7 +32,7 @@ python -m pytest
 - FastAPI обслуживает API и статический интерфейс, Swagger доступен на `/docs`.
 - PostgreSQL хранит аккаунты, комментарии, лайки, видео, разрешения на приватный доступ, подписки и жалобы.
 - MinIO хранит загруженные файлы. API выдаёт ссылку на скачивание/просмотр на пять минут после проверки приватного доступа.
-- Redis подключён для фоновых задач; перекодирование видео и выдача адаптивных вариантов пока не реализованы.
+- Redis ставит загрузки в очередь. Worker на FFmpeg нормализует видео в MP4, делает миниатюру и переводит ролик из `processing` в `ready`. Адаптивные варианты HLS/DASH пока не создаются.
 - Роли: `user`, `moderator`, `admin`. Повышение роли выполняется оператором базы данных.
 
 План и схема описаны в `docs/`. Коммитить `.env` нельзя.

@@ -12,7 +12,7 @@ def client(public: bool = False) -> Minio:
     endpoint = configured or os.getenv("S3_ENDPOINT", "localhost:9000")
     endpoint = endpoint.removeprefix("http://").removeprefix("https://")
     secure = (configured or os.getenv("S3_ENDPOINT", "http://localhost:9000")).startswith("https://")
-    return Minio(endpoint, access_key=os.getenv("MINIO_ROOT_USER", "yt-local"), secret_key=os.getenv("MINIO_ROOT_PASSWORD", "change-this-minio-password"), secure=secure)
+    return Minio(endpoint, access_key=os.getenv("MINIO_ROOT_USER", "yt-local"), secret_key=os.getenv("MINIO_ROOT_PASSWORD", "change-this-minio-password"), secure=secure, region=os.getenv("S3_REGION", "us-east-1"))
 
 
 def bucket_name() -> str:
@@ -27,5 +27,4 @@ def ensure_bucket() -> None:
 
 
 def signed_url(object_key: str) -> str:
-    ensure_bucket()
     return client(public=True).presigned_get_object(bucket_name(), object_key, expires=timedelta(minutes=5))

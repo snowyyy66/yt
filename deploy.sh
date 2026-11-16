@@ -4,8 +4,12 @@ set -euo pipefail
 if ! command -v docker >/dev/null 2>&1; then
   sudo apt-get update
   sudo apt-get install -y docker.io docker-compose-v2 python3
-  sudo systemctl enable --now docker
 fi
+if ! docker compose version >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install -y docker-compose-v2
+fi
+sudo systemctl enable --now docker
 
 DOCKER=(docker)
 if ! docker info >/dev/null 2>&1; then
@@ -14,7 +18,8 @@ fi
 
 if [ ! -f .env ]; then
   cp .env.example .env
-  python3 - <<'PY'
+fi
+python3 - <<'PY'
 from pathlib import Path
 import secrets
 path = Path('.env')
@@ -25,7 +30,6 @@ text = text.replace('replace-with-a-long-random-secret', secrets.token_urlsafe(4
 text = text.replace('replace-with-a-long-demo-password', secrets.token_urlsafe(24))
 path.write_text(text)
 PY
-fi
 
 "${DOCKER[@]}" compose up --build -d
 printf '\nВидосфера запущена: http://localhost:8000\nДокументация API: http://localhost:8000/docs\n'

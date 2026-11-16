@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#fff">
+  <link rel="icon" href="data:,">
   <title>Видосфера — видео, которые ты уже видел</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
@@ -16,28 +17,28 @@
   </header>
   <aside class="sidebar" id="sidebar">
     <nav>
-      <a class="nav-item active" href="/">⌂ <span>Главная</span></a>
-      <a class="nav-item" href="/?page=shorts">▣ <span>Коротыши</span></a>
-      <a class="nav-item" href="/?page=channels">▤ <span>Подписки</span></a>
+      <a class="nav-item active" href="/" aria-label="Главная">⌂ <span>Главная</span></a>
+      <a class="nav-item" href="/?page=channels" aria-label="Подписки">▤ <span>Подписки</span></a>
       <hr>
-      <a class="nav-item" href="/?page=you">▧ <span>Ты</span></a>
-      <a class="nav-item" href="/?page=history">◷ <span>История просмотров</span></a>
-      <a class="nav-item" href="/?page=playlists">☷ <span>Плейлисты</span></a>
+      <a class="nav-item" href="/?page=you" aria-label="Твой профиль">▧ <span>Ты</span></a>
+      <a class="nav-item" href="/?page=history" aria-label="История просмотров">◷ <span>История просмотров</span></a>
+      <a class="nav-item" href="/?page=playlists" aria-label="Плейлисты">☷ <span>Плейлисты</span></a>
       <hr>
       <p class="side-note">Подпишись, чтобы алгоритм знал о тебе ещё больше</p>
       <button class="outline-button" id="signin-side">Войти</button>
       <hr>
-      <a class="nav-item" href="/?page=moderation">⚑ <span>Модераторская</span></a>
+      <a class="nav-item" href="/?page=moderation" aria-label="Модерация">⚑ <span>Модераторская</span></a>
     </nav>
     <footer>О нас · Для прессы · Авторам<br>Условия · Конфиденциальность<br><br>© 2026 Видосфера</footer>
   </aside>
   <main class="main" id="main-content">
+    <p class="demo-notice">Демо-лента: названия каналов, ролики и счётчики придуманы для пародии.</p>
     <div class="chips" id="chips"></div>
     <h1 class="feed-heading">Свежее из бесконечной ленты</h1><section class="feed" id="feed" aria-live="polite"></section>
   </main>
   <dialog id="player-dialog" class="modal wide"><button class="modal-close" data-close aria-label="Закрыть">×</button><div id="player-content"></div></dialog>
-  <dialog id="upload-dialog" class="modal"><button class="modal-close" data-close aria-label="Закрыть">×</button><h2>Загрузи своё творение</h2><p>Пусть интернет тоже это увидит.</p><form id="upload-form"><label class="dropzone" for="video-file"><span>⇧</span><b>Выбрать видео</b><small>MP4, MOV. Максимум 2 ГБ</small></label><input id="video-file" type="file" accept="video/*" required><label>Название<input name="title" required maxlength="100" placeholder="Например: я хотел просто спросить дорогу"></label><label>Описание<textarea name="description" rows="3" placeholder="Расскажи, что тут происходит"></textarea></label><label>Доступ<select name="visibility"><option value="public">Открытый доступ</option><option value="private">Приватное</option></select></label><progress id="upload-progress" value="0" max="100"></progress><button class="primary" type="submit">Загрузить и прославиться</button><p id="upload-status" role="status"></p></form></dialog>
-  <dialog id="account-dialog" class="modal"><button class="modal-close" data-close aria-label="Закрыть">×</button><h2 id="account-title">Вход в Видосферу</h2><p>Мы уже приготовили для тебя рекомендации.</p><form id="account-form"><label>Электронная почта<input type="email" name="email" required placeholder="ты@почта.ру"></label><label>Пароль<input type="password" name="password" required minlength="8" placeholder="Не забудь его через минуту"></label><label id="name-field" hidden>Имя<input name="name" placeholder="Как тебя звать в комментариях?"></label><button class="primary" type="submit">Продолжить</button></form><button class="text-button" id="register-toggle">Впервые здесь? Создать аккаунт</button><p id="account-status" role="status"></p></dialog>
+  <dialog id="upload-dialog" class="modal"><button class="modal-close" data-close aria-label="Закрыть">×</button><h2>Загрузи своё творение</h2><p>Пусть интернет тоже это увидит.</p><form id="upload-form"><label class="dropzone" for="video-file"><span>⇧</span><b>Выбрать видео</b><small>MP4, MOV. Максимум 2 ГБ</small></label><input id="video-file" type="file" accept="video/*" required><label>Название<input name="title" required maxlength="100" placeholder="Например: я хотел просто спросить дорогу"></label><label>Описание<textarea name="description" rows="3" placeholder="Расскажи, что тут происходит"></textarea></label><label>Доступ<select name="visibility" id="video-visibility"><option value="public">Открытый доступ</option><option value="private">Приватное</option></select></label><label id="grant-field" hidden>Разрешить просмотр пользователю<input name="grant_email" type="email" placeholder="почта@пример.ру"></label><progress id="upload-progress" value="0" max="100"></progress><button class="primary" type="submit">Загрузить и прославиться</button><p id="upload-status" role="status"></p></form></dialog>
+  <dialog id="account-dialog" class="modal"><button class="modal-close" data-close aria-label="Закрыть">×</button><h2 id="account-title">Вход в Видосферу</h2><p>Мы уже приготовили для тебя рекомендации.</p><form id="account-form"><label>Электронная почта<input type="email" name="email" autocomplete="email" required placeholder="ты@почта.ру"></label><label>Пароль<input type="password" name="password" autocomplete="current-password" required minlength="8" placeholder="Не забудь его через минуту"></label><label id="name-field" hidden>Имя<input name="name" autocomplete="name" placeholder="Как тебя звать в комментариях?"></label><button class="primary" type="submit">Продолжить</button></form><button class="text-button" id="register-toggle">Впервые здесь? Создать аккаунт</button><p id="account-status" role="status"></p></dialog>
   <script src="/static/app.js" defer></script>
 </body>
 </html>

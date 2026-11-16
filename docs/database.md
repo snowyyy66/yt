@@ -5,7 +5,7 @@ PostgreSQL is the source of truth for users, uploaded media metadata, grants, co
 ## Relationships
 
 - `users` owns videos and playlists, and acts as the target for channel subscriptions.
-- `videos.owner_id` references `users.id`; `videos.object_key` references a MinIO object.
+- `videos.owner_id` references `users.id`; `videos.object_key` and `videos.thumbnail_key` reference MinIO objects.
 - `video_access_grants` links a private video to an allowed user with a unique pair constraint.
 - `comments`, `video_likes`, and `reports` point to a video and its author/reporter. `video_likes` enforces one row per user/video pair.
 - `subscriptions` prevents duplicate channel follows.

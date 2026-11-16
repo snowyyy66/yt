@@ -12,10 +12,10 @@ from app.models import Comment, SessionLocal, User
 from app.security import hash_password
 
 DEMO_USERS = (
-    ("viewer@vidosphera.test", "Зритель", "user"),
-    ("moderator@vidosphera.test", "Дежурный модератор", "moderator"),
-    ("admin@vidosphera.test", "Администратор", "admin"),
-    ("creator@vidosphera.test", "Кот Борисыч", "user"),
+    ("viewer@vidosphera.example.com", "Зритель", "user"),
+    ("moderator@vidosphera.example.com", "Дежурный модератор", "moderator"),
+    ("admin@vidosphera.example.com", "Администратор", "admin"),
+    ("creator@vidosphera.example.com", "Кот Борисыч", "user"),
 )
 DEMO_VIDEO = {
     "id": "v1",
@@ -48,7 +48,7 @@ def seed() -> None:
                 user.role = role
             users[email] = user
 
-        creator = users["creator@vidosphera.test"]
+        creator = users["creator@vidosphera.example.com"]
         video = session.get(VideoRecord, DEMO_VIDEO["id"])
         if video is None:
             video = VideoRecord(owner_id=creator.id, **DEMO_VIDEO)
@@ -56,7 +56,7 @@ def seed() -> None:
             session.flush()
 
         existing = {row.text for row in session.query(Comment).filter_by(video_id=video.id).all()}
-        viewer = users["viewer@vidosphera.test"]
+        viewer = users["viewer@vidosphera.example.com"]
         for text in DEMO_COMMENTS:
             if text not in existing:
                 session.add(Comment(video_id=video.id, user_id=viewer.id, text=text))

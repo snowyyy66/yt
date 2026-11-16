@@ -1,6 +1,18 @@
-from fastapi import FastAPI
+from uuid import uuid4
+
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.media_models import Report, Subscription, VideoGrant, VideoRecord
+from app.models import Base, Comment, Like, SessionLocal, User, engine
+from app.security import hash_password, issue_token, read_token, verify_password
+
+Base.metadata.create_all(engine)
 
 app = FastAPI(title="Видосфера", description="Пародийный видеохостинг", version="0.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -23,16 +35,17 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/videos/{video_id}", tags=["videos"])
-def get_video(video_id: str):
+def get_video(video_id: str, authorization: str | None = Header(default=None)):
     from app.media_models import VideoRecord
     from app.models import SessionLocal
 
     with SessionLocal() as session:
         record = session.get(VideoRecord, video_id)
         if record is not None:
-            if record.hidden or record.visibility != "public":
-                raise HTTPException(status_code=404, detail="Видео не найдено")
-            return {"id": record.id, "title": record.title, "description": record.description}
+            user_id = read_token(authorization[7:]) if authorization and authorization.startswith("Bearer ") else None
+            viewer = session.get(User, user_id) if user_id else None
+            require_video_access(video_id, session, viewer)
+            return {"id": record.id, "title": record.title, "description": record.description, "channel": session.get(User, record.owner_id).name, "views": "Новое видео", "age": "только что", "color": "slate", "duration": "--:--", "category": "Новое", "uploaded": True, "ownerId": record.owner_id}
     sample = next((video for video in VIDEOS if video["id"] == video_id), None)
     if sample is None:
         raise HTTPException(status_code=404, detail="Видео не найдено")
@@ -49,14 +62,6 @@ def frontend_page(page: str):
 @app.get("/", include_in_schema=False)
 def homepage():
     return FileResponse("app/static/index.html")
-from fastapi import Depends, Header, HTTPException
-from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
-from app.models import Comment, Like, SessionLocal, User
-from app.security import hash_password, issue_token, read_token, verify_password
 
 
 def db_session():
@@ -75,6 +80,22 @@ def current_user(authorization: str | None = Header(default=None), session: Sess
     if user is None:
         raise HTTPException(status_code=401, detail="Сессия закончилась, войди ещё раз")
     return user
+
+
+def require_video_access(video_id: str, session: Session, user: User | None = None):
+    video = session.get(VideoRecord, video_id)
+    if video is None:
+        if any(sample["id"] == video_id for sample in VIDEOS):
+            return None
+        raise HTTPException(status_code=404, detail="Видео не найдено")
+    if video.hidden:
+        raise HTTPException(status_code=404, detail="Видео не найдено")
+    if video.visibility == "private":
+        if user is None:
+            raise HTTPException(status_code=401, detail="Войди, чтобы посмотреть приватное видео")
+        if user.id != video.owner_id and session.scalar(select(VideoGrant).where(VideoGrant.video_id == video_id, VideoGrant.user_id == user.id)) is None:
+            raise HTTPException(status_code=403, detail="Владелец пока не поделился этим видео")
+    return video
 
 
 class RegisterInput(BaseModel):
@@ -118,15 +139,17 @@ def me(user: User = Depends(current_user)):
 
 
 @app.get("/api/videos/{video_id}/comments", tags=["videos"])
-def get_comments(video_id: str, session: Session = Depends(db_session)):
+def get_comments(video_id: str, authorization: str | None = Header(default=None), session: Session = Depends(db_session)):
+    token_user_id = read_token(authorization[7:]) if authorization and authorization.startswith("Bearer ") else None
+    viewer = session.get(User, token_user_id) if token_user_id else None
+    require_video_access(video_id, session, viewer)
     rows = session.scalars(select(Comment).where(Comment.video_id == video_id).order_by(Comment.created_at.desc()).limit(100)).all()
     return [{"id": row.id, "text": row.text, "author": session.get(User, row.user_id).name} for row in rows]
 
 
 @app.post("/api/videos/{video_id}/comments", status_code=201, tags=["videos"])
 def add_comment(video_id: str, data: CommentInput, user: User = Depends(current_user), session: Session = Depends(db_session)):
-    if not any(video["id"] == video_id for video in VIDEOS):
-        raise HTTPException(status_code=404, detail="Видео не найдено")
+    require_video_access(video_id, session, user)
     comment = Comment(video_id=video_id, user_id=user.id, text=data.text.strip())
     session.add(comment)
     session.commit()
@@ -135,8 +158,7 @@ def add_comment(video_id: str, data: CommentInput, user: User = Depends(current_
 
 @app.put("/api/videos/{video_id}/like", tags=["videos"])
 def toggle_like(video_id: str, user: User = Depends(current_user), session: Session = Depends(db_session)):
-    if not any(video["id"] == video_id for video in VIDEOS):
-        raise HTTPException(status_code=404, detail="Видео не найдено")
+    require_video_access(video_id, session, user)
     like = session.scalar(select(Like).where(Like.video_id == video_id, Like.user_id == user.id))
     if like is None:
         like = Like(video_id=video_id, user_id=user.id, active=True)
@@ -146,12 +168,6 @@ def toggle_like(video_id: str, user: User = Depends(current_user), session: Sess
     session.commit()
     count = session.scalar(select(Like).where(Like.video_id == video_id, Like.active.is_(True)).count()) if False else None
     return {"liked": like.active}
-from uuid import uuid4
-
-from fastapi import File, Form, UploadFile
-from sqlalchemy import func
-
-from app.media_models import Report, Subscription, VideoGrant, VideoRecord
 
 class AccessInput(BaseModel):
     email: EmailStr
@@ -183,7 +199,7 @@ def upload_video(file: UploadFile = File(...), title: str = Form(min_length=1, m
         storage.client().put_object(storage.bucket_name(), key, file.file, file.size, content_type=file.content_type)
     except Exception as error:
         raise HTTPException(status_code=503, detail="Хранилище видео временно недоступно") from error
-    video = VideoRecord(id=video_id, owner_id=user.id, title=title.strip(), description=description, object_key=key, visibility=visibility, status="ready")
+    video = VideoRecord(id=video_id, owner_id=user.id, title=title.strip(), description=description, object_key=key, visibility=visibility, status="processing" if __import__("os").getenv("VIDEO_WORKER_ENABLED") == "true" else "ready")
     session.add(video)
     try:
         session.commit()
@@ -194,6 +210,18 @@ def upload_video(file: UploadFile = File(...), title: str = Form(min_length=1, m
         except Exception:
             pass
         raise HTTPException(status_code=503, detail="Не удалось сохранить метаданные видео") from error
+    if __import__("os").getenv("VIDEO_WORKER_ENABLED") == "true":
+        try:
+            from app.jobs import enqueue
+            enqueue(video_id)
+        except Exception as error:
+            session.delete(video)
+            session.commit()
+            try:
+                storage.client().remove_object(storage.bucket_name(), key)
+            except Exception:
+                pass
+            raise HTTPException(status_code=503, detail="Не удалось поставить видео в очередь обработки") from error
     return {"id": video.id, "title": video.title, "visibility": video.visibility, "status": video.status}
 
 
@@ -204,6 +232,10 @@ def play_video(video_id: str, authorization: str | None = Header(default=None), 
     video = session.get(VideoRecord, video_id)
     if video is None or video.hidden:
         raise HTTPException(status_code=404, detail="Видео не найдено")
+    if video.status == "processing":
+        raise HTTPException(status_code=409, detail="Видео ещё обрабатывается. Попробуй через минуту.")
+    if video.status != "ready":
+        raise HTTPException(status_code=410, detail="Видео не удалось обработать")
     if video.visibility == "private":
         user_id = read_token(authorization[7:]) if authorization and authorization.startswith("Bearer ") else None
         if user_id is None:
@@ -287,15 +319,21 @@ def hide_video(video_id: str, user: User = Depends(require_moderator), session: 
     session.commit()
     return {"video_id": video_id, "hidden": True, "moderated_by": user.id}
 
-from app.models import Base, engine
-Base.metadata.create_all(engine)
-from sqlalchemy import select
 
 
 @app.get("/api/videos", tags=["videos"])
 def list_videos(session: Session = Depends(db_session)) -> list[dict[str, object]]:
     uploaded = session.scalars(select(VideoRecord).where(VideoRecord.visibility == "public", VideoRecord.hidden.is_(False), VideoRecord.status == "ready").order_by(VideoRecord.created_at.desc())).all()
-    records = [{"id": row.id, "title": row.title, "channel": session.get(User, row.owner_id).name, "views": "Новое видео", "age": "только что", "color": "slate", "duration": "--:--", "category": "Новое", "uploaded": True, "owner_id": row.owner_id} for row in uploaded]
+    records = []
+    for row in uploaded:
+        thumbnail_url = None
+        if row.thumbnail_key:
+            try:
+                from app.storage import signed_url
+                thumbnail_url = signed_url(row.thumbnail_key)
+            except Exception:
+                thumbnail_url = None
+        records.append({"id": row.id, "title": row.title, "channel": session.get(User, row.owner_id).name, "views": "Новое видео", "age": "только что", "color": "slate", "duration": "--:--", "category": "Новое", "uploaded": True, "owner_id": row.owner_id, "thumbnail": thumbnail_url})
     hidden_ids = set(session.scalars(select(VideoRecord.id).where(VideoRecord.hidden.is_(True))).all())
     return records + [video for video in VIDEOS if video["id"] not in hidden_ids]
 
@@ -386,3 +424,10 @@ def set_user_role(user_id: int, data: RoleInput, _: User = Depends(require_admin
     target.role = data.role
     session.commit()
     return {"id": target.id, "role": target.role}
+@app.get("/api/channels/{channel_id}/playlists", tags=["channels"])
+def channel_playlists(channel_id: int, session: Session = Depends(db_session)):
+    from app.media_models import Playlist
+    if session.get(User, channel_id) is None:
+        raise HTTPException(status_code=404, detail="Канал не найден")
+    rows = session.scalars(select(Playlist).where(Playlist.owner_id == channel_id, Playlist.visibility == "public").order_by(Playlist.id.desc())).all()
+    return [{"id": row.id, "title": row.title} for row in rows]

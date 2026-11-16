@@ -2,12 +2,16 @@ services:
   app:
     build: .
     env_file: .env
+    environment:
+      VIDEO_WORKER_ENABLED: "true"
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
       minio:
+        condition: service_started
+      redis:
         condition: service_started
     restart: unless-stopped
 
@@ -37,6 +41,21 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
+    restart: unless-stopped
+
+  worker:
+    build: .
+    environment:
+      VIDEO_WORKER_ENABLED: "true"
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   redis:
