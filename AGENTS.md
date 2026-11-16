@@ -8,7 +8,7 @@ This is a Russian-language parody of a familiar video platform. Keep the recogni
 
 - FastAPI serves the API, OpenAPI docs, and static interface.
 - PostgreSQL stores accounts and application metadata.
-- MinIO stores original, normalized, and thumbnail objects.
+- Silo (S3-compatible with MinIO) stores original, normalized, and thumbnail objects.
 - Redis queues uploads for the FFmpeg worker.
 - Private media access is authorized before issuing a short-lived signed URL.
 

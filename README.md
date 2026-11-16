@@ -10,7 +10,7 @@
 bash deploy.sh
 ```
 
-Скрипт создаёт `.env` со случайными секретами и запускает API, PostgreSQL, MinIO и Redis. API: <http://localhost:8000>, Swagger: <http://localhost:8000/docs>, MinIO Console: <http://localhost:9001>.
+Скрипт создаёт `.env` со случайными секретами и запускает API, PostgreSQL, Silo (S3-хранилище, совместимое с MinIO) и Redis. API: <http://localhost:8000>, Swagger: <http://localhost:8000/docs>, консоль хранилища: <http://localhost:9001>.
 
 Для локальной разработки скопируй `.env.example` в `.env` и выполни `docker compose up --build -d`.
 
