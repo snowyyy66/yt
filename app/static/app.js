@@ -57,3 +57,40 @@ accountForm.onsubmit=async event=>{
     document.querySelector('#account-open').textContent=values.name?.[0]?.toUpperCase()||values.email[0].toUpperCase();
   }catch(error){status.textContent=error.message}
 };
+const tokenHeaders=()=>{const token=localStorage.getItem('token');return token?{Authorization:`Bearer ${token}`}:{}};
+document.addEventListener('click',async event=>{
+  if(event.target.id==='like-button'){
+    event.preventDefault();event.stopImmediatePropagation();
+    const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}
+    const id=document.querySelector('#player-dialog').querySelector('.player-details h2').textContent;
+    const video=videos.find(item=>item.title===id);if(!video)return;
+    const response=await fetch(`/api/videos/${video.id}/like`,{method:'PUT',headers:tokenHeaders()});
+    if(response.ok){const result=await response.json();event.target.textContent=result.liked?'♥ Нравится':'♡ Нравится'}
+  }
+  if(event.target.id==='comment-submit'){
+    event.preventDefault();event.stopImmediatePropagation();
+    const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}
+    const input=document.querySelector('#comment-input');const videoTitle=document.querySelector('#player-dialog .player-details h2').textContent;const video=videos.find(item=>item.title===videoTitle);
+    if(!input.value.trim()||!video)return;
+    const response=await fetch(`/api/videos/${video.id}/comments`,{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify({text:input.value})});
+    if(response.ok){const comment=await response.json();const item=document.createElement('div');item.className='comment';item.textContent=`@${comment.author}: ${comment.text}`;document.querySelector('#comments').prepend(item);input.value=''}
+  }
+  const reportButton=event.target.closest('[data-report]');
+  if(reportButton){
+    event.preventDefault();event.stopImmediatePropagation();
+    const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}
+    const reason=prompt('Что не так с этим видео?');if(!reason)return;
+    const response=await fetch(`/api/videos/${reportButton.dataset.report}/reports`,{method:'POST',headers:{...tokenHeaders(),'Content-Type':'application/json'},body:JSON.stringify({reason})});
+    if(response.ok){reportButton.textContent='⚑';reportButton.title='Жалоба отправлена'}
+  }
+},true);
+document.querySelector('#upload-form').onsubmit=event=>{
+  event.preventDefault();
+  const token=localStorage.getItem('token');if(!token){document.querySelector('#account-dialog').showModal();return}
+  const form=event.currentTarget;const values=new FormData(form);const status=document.querySelector('#upload-status');
+  const request=new XMLHttpRequest();request.open('POST','/api/videos');request.setRequestHeader('Authorization',`Bearer ${token}`);
+  request.upload.onprogress=progress=>{if(progress.lengthComputable)document.querySelector('#upload-progress').value=Math.round(progress.loaded/progress.total*100)};
+  request.onload=()=>{const result=JSON.parse(request.responseText||'{}');status.textContent=request.status<300?'Видео загружено. Теперь оно хранится в объектном хранилище.':(result.detail||'Не удалось загрузить видео')};
+  request.onerror=()=>{status.textContent='Сеть прервалась. Попробуй загрузить ещё раз.'};
+  request.send(values);
+};

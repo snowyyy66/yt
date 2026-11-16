@@ -1,7 +1,9 @@
 # Architecture
 
-The first deployment uses Docker Compose. FastAPI owns the HTTP boundary and OpenAPI contract. PostgreSQL is the source of truth for accounts, video metadata, grants, and interactions. MinIO stores original and processed media objects; the database stores object keys, never media bytes. Redis is reserved for job coordination and caching.
+Docker Compose runs the FastAPI application, PostgreSQL, MinIO, and Redis. FastAPI owns the HTTP and OpenAPI boundary. PostgreSQL is the source of truth for accounts, comments, likes, videos, private access grants, subscriptions, and reports. MinIO stores video bytes; the database stores object keys and access policy.
 
-Video delivery will use short-lived signed object URLs after API authorization. Private video grants are checked before a URL is issued. Uploads will be size-limited, stored under server-generated keys, and processed asynchronously before becoming playable.
+Uploads require a bearer token, accept video MIME types up to 2 GiB, and use server-generated object keys. Playback checks visibility before issuing a five-minute signed URL. The public MinIO endpoint is configurable separately from the internal endpoint so a browser can reach the object URL.
 
-The initial API skeleton does not claim database or object-store readiness; `/health` confirms only that the HTTP process responds. Feature work adds dependency-aware readiness and migrations.
+Passwords are hashed with scrypt. API tokens are signed HMAC tokens with a 24-hour expiry. Roles are `user`, `moderator`, and `admin`; moderation endpoints require one of the latter roles. The demo feed is static and the API stores newly uploaded media records in PostgreSQL.
+
+Redis is present for the planned processing queue. Transcoding, thumbnail generation, and adaptive streaming are not implemented yet; an uploaded video is marked `ready` after storage accepts it.

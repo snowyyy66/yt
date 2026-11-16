@@ -1,26 +1,34 @@
-# YT
+# Видосфера
 
-A self-hosted video sharing service built with FastAPI, PostgreSQL, MinIO, and Redis.
+Пародийный видеохостинг с привычной лентой, поиском и плеером. Здесь ролики обещают раскрыть секрет успеха, а комментарии напоминают, что интернет всё ещё интернет.
 
-## Run locally
+## Запуск на Ubuntu
 
-Copy `.env.example` to `.env`, change the development passwords, then run:
+Требуются Docker Engine с Compose plugin и Python 3.12+ для генерации случайных секретов. Из корня репозитория:
 
 ```sh
-docker compose up --build -d
+chmod +x deploy.sh && ./deploy.sh
 ```
 
-Open the API docs at <http://localhost:8000/docs>. MinIO console is at <http://localhost:9001>.
+Скрипт создаёт `.env` со случайными секретами и запускает API, PostgreSQL, MinIO и Redis. API: <http://localhost:8000>, Swagger: <http://localhost:8000/docs>, MinIO Console: <http://localhost:9001>.
 
-## Architecture
+Для локальной разработки скопируй `.env.example` в `.env` и выполни `docker compose up --build -d`.
 
-See [docs/architecture.md](docs/architecture.md) and [docs/database.md](docs/database.md). The API currently exposes `/health`; feature slices are tracked in [the implementation plan](docs/superpowers/plans/2026-11-17-video-platform.md).
-
-## Tests
+## Проверки
 
 ```sh
 python -m pip install -e '.[test]'
 python -m pytest
 ```
 
-Do not use production secrets in `.env`; the example credentials are for local development only.
+Тесты проверяют HTTP-контракт, регистрацию и вход, запрет анонимных комментариев, загрузку в S3-совместимое хранилище, проверку частного доступа, подписку и запрет доступа пользователя к очереди модерации.
+
+## Устройство
+
+- FastAPI обслуживает API и статический интерфейс, Swagger доступен на `/docs`.
+- PostgreSQL хранит аккаунты, комментарии, лайки, видео, разрешения на приватный доступ, подписки и жалобы.
+- MinIO хранит загруженные файлы. API выдаёт ссылку на скачивание/просмотр на пять минут после проверки приватного доступа.
+- Redis подключён для фоновых задач; перекодирование видео и выдача адаптивных вариантов пока не реализованы.
+- Роли: `user`, `moderator`, `admin`. Повышение роли выполняется оператором базы данных.
+
+План и схема описаны в `docs/`. Коммитить `.env` нельзя.
